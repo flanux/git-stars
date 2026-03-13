@@ -1,107 +1,160 @@
 package com.flanux.gitstars.data
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
 class GitHubRepository(private val token: String) {
-    
+
     private val apiService: GitHubApiService
-    
+
     init {
+
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
-        
+
+        val authInterceptor = Interceptor { chain ->
+
+            val request = chain.request()
+                .newBuilder()
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Accept", "application/vnd.github+json")
+                .build()
+
+            chain.proceed(request)
+        }
+
         val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
-        
+
         val retrofit = Retrofit.Builder()
             .baseUrl("https://api.github.com/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-        
+
         apiService = retrofit.create(GitHubApiService::class.java)
     }
-    
-    private fun authHeader() = "Bearer $token"
-    
-    suspend fun getFollowingUsers(): Result<List<GitHubUser>> = withContext(Dispatchers.IO) {
-        try {
-            val users = apiService.getFollowing(authHeader())
-            Result.success(users)
-        } catch (e: Exception) {
-            Result.failure(e)
+
+    suspend fun getCurrentUser(): Result<GitHubUser> =
+        safeCall {
+            apiService.getCurrentUser()
         }
-    }
-    
-    suspend fun getStarredReposFromFollowing(): Result<List<StarredRepoItem>> = withContext(Dispatchers.IO) {
-        try {
-            val following = apiService.getFollowing(authHeader())
-            val allStarredRepos = mutableListOf<StarredRepoItem>()
-            
-            // Fetch starred repos for each person you follow
-            following.take(10).forEach { user ->  // Limit to first 10 people to avoid rate limits
-                try {
-                    val starredRepos = apiService.getUserStarredRepos(
-                        username = user.login,
-                        token = authHeader(),
-                        perPage = 10,  // Reduced from 30
-                        sort = "created"
-                    )
-                    
-                    starredRepos.forEach { repo ->
-                        allStarredRepos.add(
-                            StarredRepoItem(
-                                repo = repo,
-                                starredBy = user.login
-                            )
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Skip user if error - their stars might be private
-                    android.util.Log.e("GitStars", "Error fetching stars for ${user.login}: ${e.message}")
-                }
+
+    suspend fun getFollowingUsers(): Result<List<GitHubUser>> =
+        safeCall {
+
+            val allUsers = mutableListOf<GitHubUser>()
+            var page = 1
+
+            while (true) {
+
+                val users = apiService.getFollowing(
+                    perPage = 100,
+                    page = page
+                )
+
+                if (users.isEmpty()) break
+
+                allUsers.addAll(users)
+                page++
             }
-            
-            // Sort by stars
-            Result.success(allStarredRepos.sortedByDescending { it.repo.stars })
-        } catch (e: Exception) {
-            android.util.Log.e("GitStars", "Error: ${e.message}", e)
-            Result.failure(e)
+
+            allUsers
         }
-    }
-            
-            // Sort by most recent stars first
-            Result.success(allStarredRepos.sortedByDescending { it.repo.stars })
-        } catch (e: Exception) {
-            Result.failure(e)
+
+    suspend fun getMyStarredRepos(): Result<List<GitHubRepo>> =
+        safeCall {
+            apiService.getMyStarredRepos(perPage = 100)
         }
-    }
-    
-    suspend fun getMyStarredRepos(): Result<List<GitHubRepo>> = withContext(Dispatchers.IO) {
-        try {
-            val repos = apiService.getMyStarredRepos(authHeader())
-            Result.success(repos)
-        } catch (e: Exception) {
-            Result.failure(e)
+
+    suspend fun getStarredReposFromFollowing(): Result<List<StarredRepoItem>> =
+        safeCall {
+
+            val following = apiService.getFollowing(perPage = 100)
+
+            coroutineScope {
+
+                val jobs = following.take(10).map { user ->
+
+                    async {
+
+                        try {
+
+                            val repos = apiService.getUserStarredRepos(
+                                username = user.login,
+                                perPage = 10
+                            )
+
+                            repos.map {
+                                StarredRepoItem(
+                                    repo = it,
+                                    starredBy = user.login
+                                )
+                            }
+
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+
+                    }
+
+                }
+
+                jobs.awaitAll()
+                    .flatten()
+                    .sortedByDescending { it.repo.stargazers_count }
+
+            }
+
         }
-    }
-    
-    suspend fun getCurrentUser(): Result<GitHubUser> = withContext(Dispatchers.IO) {
-        try {
-            val user = apiService.getCurrentUser(authHeader())
-            Result.success(user)
-        } catch (e: Exception) {
-            Result.failure(e)
+
+    private suspend fun <T> safeCall(
+        block: suspend () -> T
+    ): Result<T> =
+        withContext(Dispatchers.IO) {
+
+            try {
+                Result.success(block())
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
         }
+
+    // ---------------- API ----------------
+
+    interface GitHubApiService {
+
+        @GET("user")
+        suspend fun getCurrentUser(): GitHubUser
+
+        @GET("user/following")
+        suspend fun getFollowing(
+            @Query("per_page") perPage: Int = 100,
+            @Query("page") page: Int = 1
+        ): List<GitHubUser>
+
+        @GET("user/starred")
+        suspend fun getMyStarredRepos(
+            @Query("per_page") perPage: Int = 100
+        ): List<GitHubRepo>
+
+        @GET("users/{username}/starred")
+        suspend fun getUserStarredRepos(
+            @Path("username") username: String,
+            @Query("per_page") perPage: Int = 10,
+            @Query("sort") sort: String = "created"
+        ): List<GitHubRepo>
     }
 }
