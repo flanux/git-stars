@@ -1,5 +1,6 @@
 package com.flanux.gitstars.data
 
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.*
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -37,10 +38,15 @@ class GitHubRepository(private val token: String) {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
 
+        // FIX: Add lenient Gson to handle type parsing properly
+        val gson = GsonBuilder()
+            .setLenient()
+            .create()
+
         val retrofit = Retrofit.Builder()
             .baseUrl("https://api.github.com/")
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson)) // Use custom Gson
             .build()
 
         apiService = retrofit.create(GitHubApiService::class.java)
