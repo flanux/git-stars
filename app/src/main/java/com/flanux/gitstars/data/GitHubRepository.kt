@@ -113,7 +113,7 @@ class GitHubRepository(private val token: String) {
 
                 jobs.awaitAll()
                     .flatten()
-                    .sortedByDescending { it.repo.stargazers_count }
+                    .sortedByDescending { it.repo.stars }
 
             }
 
