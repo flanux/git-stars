@@ -49,12 +49,12 @@ class GitHubRepository(private val token: String) {
             val allStarredRepos = mutableListOf<StarredRepoItem>()
             
             // Fetch starred repos for each person you follow
-            following.forEach { user ->
+            following.take(10).forEach { user ->  // Limit to first 10 people to avoid rate limits
                 try {
                     val starredRepos = apiService.getUserStarredRepos(
                         username = user.login,
                         token = authHeader(),
-                        perPage = 30, // Limit per user to avoid rate limits
+                        perPage = 10,  // Reduced from 30
                         sort = "created"
                     )
                     
@@ -67,9 +67,18 @@ class GitHubRepository(private val token: String) {
                         )
                     }
                 } catch (e: Exception) {
-                    // Skip user if their stars are private or error occurs
+                    // Skip user if error - their stars might be private
+                    android.util.Log.e("GitStars", "Error fetching stars for ${user.login}: ${e.message}")
                 }
             }
+            
+            // Sort by stars
+            Result.success(allStarredRepos.sortedByDescending { it.repo.stars })
+        } catch (e: Exception) {
+            android.util.Log.e("GitStars", "Error: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
             
             // Sort by most recent stars first
             Result.success(allStarredRepos.sortedByDescending { it.repo.stars })
