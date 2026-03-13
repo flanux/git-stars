@@ -5,6 +5,7 @@ import com.google.gson.annotations.SerializedName
 data class GitHubRepo(
     val id: Long,
     val name: String,
+    @serializedName("full_name")
     val fullName: String,
     val description: String?,
     val language: String?,
@@ -19,7 +20,7 @@ data class GitHubRepo(
     val createdAt: String,
     @SerializedName("updated_at")
     val updatedAt: String,
-    val topics: List<String> = emptyList()
+    val topics: List<String>? = null 
 ) {
     data class Owner(
         val login: String,
