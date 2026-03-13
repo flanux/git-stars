@@ -5,7 +5,11 @@
 # Retrofit
 -keepattributes Signature
 -keepattributes Exceptions
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
 -keep class retrofit2.** { *; }
+-dontwarn retrofit2.**
+-keep class kotlin.coroutines.Continuation
 
 # OkHttp
 -dontwarn okhttp3.**
@@ -16,6 +20,12 @@
 -keepclassmembers,allowobfuscation class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
+
+# Gson type adapters
+-keep class * extends com.google.gson.TypeAdapter
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
 
 # Data classes
 -keep class com.flanux.gitstars.data.** { *; }

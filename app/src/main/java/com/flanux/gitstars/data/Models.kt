@@ -10,9 +10,9 @@ data class GitHubRepo(
     val description: String?,
     val language: String?,
     @SerializedName("stargazers_count")
-    val stars: Int,
+    val stars: Int?,
     @SerializedName("forks_count")
-    val forks: Int,
+    val forks: Int?,
     @SerializedName("html_url")
     val url: String,
     val owner: Owner,
