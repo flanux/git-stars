@@ -60,9 +60,9 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
       
-      - name: Rename APK
+      - name: Rename and move APK
         run: |
-          cp app/build/outputs/apk/release/app-release-unsigned-signed.apk GitStars-v${{ github.run_number }}.apk
+          cp app/build/outputs/apk/release/app-release-signed.apk GitStars-v${{ github.run_number }}.apk
       
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
